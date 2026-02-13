@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frustris | The Chaotic Tetris Parody</title>
+    <meta name="description" content="Tetris, but with free rotation and chaotic physics. Experience the frustration.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div id="app">
+        <div class="game-container">
+            <div id="game-canvas-container"></div>
+            
+            <div class="ui-overlay">
+                <header>
+                    <h1 class="logo">FRUSTRIS</h1>
+                    <div class="stats">
+                        <div class="stat-box">
+                            <span class="label">SCORE</span>
+                            <span id="score-val" class="value">000000</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="label">PILE</span>
+                            <div class="progress-bar">
+                                <div id="pile-meter" class="progress-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <div class="controls-hint">
+                    <p><span>&larr;&rarr;</span> Move</p>
+                    <p><span>A / D</span> Rotate Smoothly</p>
+                    <p><span>&darr;</span> Soft Drop</p>
+                    <p><span>SPACE</span> Hard Drop</p>
+                </div>
+
+                <div id="game-over" class="modal hidden">
+                    <div class="modal-content">
+                        <h2>GAME OVER</h2>
+                        <p>The pile reached the top.</p>
+                        <div class="final-score">
+                            <span class="label">FINAL SCORE</span>
+                            <span id="final-score-val" class="value">0</span>
+                        </div>
+                        <button id="restart-btn">TRY AGAIN</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="./main.js"></script>
+</body>
+</html>
