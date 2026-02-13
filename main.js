@@ -29,7 +29,9 @@ class Frustris {
 
     initPhysics() {
         this.engine = Engine.create({
-            gravity: { y: 0.3 } // Reduced gravity for slower fall
+            gravity: { y: 0.3 },
+            positionIterations: 10,
+            velocityIterations: 10
         });
 
         this.render = Render.create({
@@ -43,11 +45,18 @@ class Frustris {
             }
         });
 
-        // Add boundaries
-        const wallOptions = { isStatic: true, render: { fillStyle: 'transparent' } };
-        const ground = Bodies.rectangle(this.width / 2, this.height + 50, this.width, 100, wallOptions);
-        const leftWall = Bodies.rectangle(-50, this.height / 2, 100, this.height, wallOptions);
-        const rightWall = Bodies.rectangle(this.width + 50, this.height / 2, 100, this.height, wallOptions);
+        // Add boundaries - make them much thicker to prevent tunneling
+        const wallOptions = {
+            isStatic: true,
+            render: { fillStyle: 'transparent' },
+            friction: 0.5,
+            restitution: 0.1
+        };
+        // Ground at the bottom edge, 500px thick
+        const ground = Bodies.rectangle(this.width / 2, this.height + 250, this.width * 2, 500, wallOptions);
+        // Side walls, 500px thick
+        const leftWall = Bodies.rectangle(-250, this.height / 2, 500, this.height * 2, wallOptions);
+        const rightWall = Bodies.rectangle(this.width + 250, this.height / 2, 500, this.height * 2, wallOptions);
 
         Composite.add(this.engine.world, [ground, leftWall, rightWall]);
 
@@ -78,10 +87,12 @@ class Frustris {
 
         this.activePiece = Body.create({
             parts: parts,
-            position: { x: this.width / 2, y: 50 },
             friction: 0.5,
             restitution: 0.2
         });
+
+        // Strictly center the piece at the top
+        Body.setPosition(this.activePiece, { x: this.width / 2, y: 50 });
 
         // Set initial label to identify active piece
         this.activePiece.label = 'active';
@@ -111,15 +122,17 @@ class Frustris {
     handleInput() {
         if (!this.activePiece || this.isGameOver) return;
 
-        const moveSpeed = 5;
+        const moveSpeed = 6;
         const rotateSpeed = 0.08;
+        let vx = 0;
 
-        if (this.keys['ArrowLeft']) {
-            Body.translate(this.activePiece, { x: -moveSpeed, y: 0 });
-        }
-        if (this.keys['ArrowRight']) {
-            Body.translate(this.activePiece, { x: moveSpeed, y: 0 });
-        }
+        if (this.keys['ArrowLeft']) vx = -moveSpeed;
+        if (this.keys['ArrowRight']) vx = moveSpeed;
+
+        // Apply horizontal velocity explicitly every update to prevent unwanted sliding
+        // If vx is 0, it will stop the lateral movement immediately.
+        Body.setVelocity(this.activePiece, { x: vx, y: this.activePiece.velocity.y });
+
         if (this.keys['KeyA']) {
             Body.rotate(this.activePiece, -rotateSpeed);
         }
@@ -127,17 +140,16 @@ class Frustris {
             Body.rotate(this.activePiece, rotateSpeed);
         }
         if (this.keys['ArrowDown']) {
-            Body.translate(this.activePiece, { x: 0, y: moveSpeed * 2 });
+            Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 8 });
         }
         if (this.keys['Space']) {
-            // "Hard drop" - set velocity down
             Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 15 });
         }
 
-        // Keep inside horizontal walls
+        // Keep inside horizontal walls - but using physics-friendly clamping
         const pos = this.activePiece.position;
-        if (pos.x < 20) Body.setPosition(this.activePiece, { x: 20, y: pos.y });
-        if (pos.x > this.width - 20) Body.setPosition(this.activePiece, { x: this.width - 20, y: pos.y });
+        if (pos.x < 15) Body.setPosition(this.activePiece, { x: 15, y: pos.y });
+        if (pos.x > this.width - 15) Body.setPosition(this.activePiece, { x: this.width - 15, y: pos.y });
     }
 
     checkSettle() {
@@ -157,14 +169,13 @@ class Frustris {
             this.checkClears();
         }
 
-        // Game over check
-        if (this.activePiece && this.activePiece.position.y > 100) {
-            const staticBodies = Composite.allBodies(this.engine.world).filter(b => b.label === 'settled');
-            staticBodies.forEach(b => {
-                if (b.position.y < 100) {
-                    this.triggerGameOver();
-                }
-            });
+        // Game over check - only if pile becomes extremely high (reaching top 15% of screen)
+        const staticBodies = Composite.allBodies(this.engine.world).filter(b => b.label === 'settled');
+        for (let b of staticBodies) {
+            if (b.position.y < 100) {
+                this.triggerGameOver();
+                break;
+            }
         }
     }
 
@@ -216,25 +227,32 @@ class Frustris {
     }
 
     checkClears() {
+        // Find all blocks that have settled
         const settled = Composite.allBodies(this.engine.world).filter(b => b.label === 'settled');
 
+        // Update the pile meter based on the highest settled block
         const minY = Math.min(...settled.map(b => b.position.y), this.height);
-        const pilePercent = Math.max(0, Math.min(100, ((this.height - minY) / this.height) * 100));
+        const pilePercent = Math.max(0, Math.min(100, ((this.height - minY) / 300) * 100)); // Normalized to a much smaller 'full' height
         this.pileMeter.style.width = `${pilePercent}%`;
 
-        if (pilePercent > 80) {
+        if (pilePercent > 70) {
             this.pileMeter.style.background = 'var(--danger)';
         } else {
             this.pileMeter.style.background = 'var(--accent-secondary)';
         }
 
-        if (settled.length > 25) {
+        // Maintain a shallow 'rubbish' pile (approx 2-3 layers of mess)
+        // We clear very aggressively to keep it feeling like a shallow collection of junk
+        if (settled.length > 12) {
+            // Sort by Y position descending (bottom-most first)
             settled.sort((a, b) => b.position.y - a.position.y);
-            const toRemove = settled.slice(0, 5);
 
-            this.screenShake(15);
+            // Remove the 4 bottom-most pieces to maintain that 'layers' look
+            const toRemove = settled.slice(0, 4);
+
+            this.screenShake(6);
             this.showClearBonus();
-            this.score += 500;
+            this.score += 250;
 
             toRemove.forEach(b => {
                 Composite.remove(this.engine.world, b);
