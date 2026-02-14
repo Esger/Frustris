@@ -14,8 +14,11 @@ class Frustris {
         this.restartBtn = document.getElementById('restart-btn');
 
         this.score = 0;
+        this.currentLevel = 1;
+        this.minToClear = 3;
         this.isGameOver = false;
         this.isPaused = false;
+        this.hasStarted = false;
         this.activePiece = null;
         this.keys = {};
         this.isTouchingPile = false;
@@ -36,8 +39,6 @@ class Frustris {
 
         this.initPhysics();
         this.addEventListeners();
-        this.spawnPiece();
-        this.startGameLoop();
 
         // Debug accessibility
         window.frustris = this;
@@ -46,9 +47,9 @@ class Frustris {
     initPhysics() {
         this.engine = Engine.create({
             gravity: { y: 0.3 },
-            positionIterations: 6, // Reduced from 10 for performance
-            velocityIterations: 6, // Reduced from 10 for performance
-            enableSleeping: true   // Allows settled pieces to stop being processed
+            positionIterations: 6,
+            velocityIterations: 6,
+            enableSleeping: true
         });
 
         this.render = Render.create({
@@ -62,16 +63,13 @@ class Frustris {
             }
         });
 
-        // Add boundaries - make them much thicker to prevent tunneling
         const wallOptions = {
             isStatic: true,
             render: { fillStyle: 'transparent' },
             friction: 0.5,
             restitution: 0.1
         };
-        // Ground at the bottom edge, 500px thick
         const ground = Bodies.rectangle(this.width / 2, this.height + 250, this.width * 2, 500, wallOptions);
-        // Side walls, 500px thick
         const leftWall = Bodies.rectangle(-250, this.height / 2, 500, this.height * 2, wallOptions);
         const rightWall = Bodies.rectangle(this.width + 250, this.height / 2, 500, this.height * 2, wallOptions);
 
@@ -85,16 +83,13 @@ class Frustris {
     spawnPiece() {
         if (this.isGameOver || this.activePiece) return;
 
-        // Check for Game Over before spawning
         const bodies = this.engine.world.bodies;
         const thresholdY = 160;
         let blocked = false;
 
         for (let i = 0; i < bodies.length; i++) {
             const b = bodies[i];
-            // If a settled block is blocking the spawn area
             if (b.label === 'settled' && b.position.y < thresholdY && b.speed < 0.1) {
-                // Only block if it's near the center horizontally
                 if (Math.abs(b.position.x - this.width / 2) < 100) {
                     blocked = true;
                     break;
@@ -103,14 +98,12 @@ class Frustris {
         }
 
         if (blocked) {
-            console.log("Spawn blocked at Y:", thresholdY);
             this.triggerGameOver();
             return;
         }
 
         const types = Object.keys(TETROMINOES);
         const type = types[Math.floor(Math.random() * types.length)];
-        console.log("Spawning piece:", type);
         const data = TETROMINOES[type];
 
         const parts = data.shape.map(pos => {
@@ -122,7 +115,7 @@ class Frustris {
                 {
                     render: { fillStyle: data.color },
                     chamfer: { radius: 4 },
-                    sleepThreshold: 30 // Make parts go to sleep faster
+                    sleepThreshold: 30
                 }
             );
         });
@@ -133,13 +126,8 @@ class Frustris {
             restitution: 0.2
         });
 
-        // Store the piece type for match-3 logic
         this.activePiece.pieceType = type;
-
-        // Strictly center the piece at the top
         Body.setPosition(this.activePiece, { x: this.width / 2, y: 50 });
-
-        // Set initial label to identify active piece
         this.activePiece.label = 'active';
         this.activePiece.spawnTime = Date.now();
         this.activePiece.lastPos = { x: this.width / 2, y: 50 };
@@ -152,12 +140,11 @@ class Frustris {
 
     addEventListeners() {
         window.addEventListener('keydown', (e) => {
-            // Prevent default behavior for game keys (scrolling, focusing, etc)
             if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'KeyA', 'KeyD', 'Escape'].includes(e.code)) {
                 e.preventDefault();
             }
 
-            if (e.code === 'Escape' && !this.isGameOver) {
+            if (e.code === 'Escape' && !this.isGameOver && this.hasStarted) {
                 this.togglePause();
             }
             this.keys[e.code] = true;
@@ -174,7 +161,20 @@ class Frustris {
             this.togglePause();
         });
 
+        document.getElementById('play-btn').addEventListener('click', (e) => {
+            e.target.blur();
+            this.startGame();
+        });
+
         this.initMobileControls();
+    }
+
+    startGame() {
+        if (this.hasStarted) return;
+        this.hasStarted = true;
+        document.getElementById('start-splash').classList.add('hidden');
+        this.spawnPiece();
+        this.startGameLoop();
     }
 
     initMobileControls() {
@@ -206,25 +206,17 @@ class Frustris {
             const dx = currentX - lastX;
             const dy = currentY - lastY;
 
-            // Sensitivity
             const moveSensitivity = 1.0;
             const rotateSensitivity = 0.05;
 
-            // Lateral Movement (X delta)
             if (Math.abs(dx) > 1) {
                 const newX = this.activePiece.position.x + (dx * moveSensitivity);
-                // Clamp within walls
                 const clampedX = Math.max(20, Math.min(this.width - 20, newX));
-                Body.setPosition(this.activePiece, {
-                    x: clampedX,
-                    y: this.activePiece.position.y
-                });
+                Body.setPosition(this.activePiece, { x: clampedX, y: this.activePiece.position.y });
                 hasMoved = true;
             }
 
-            // Rotation (Y delta)
             if (Math.abs(dy) > 1) {
-                // dy > 0 (down) -> clockwise, dy < 0 (up) -> counterclockwise
                 Body.rotate(this.activePiece, dy * rotateSensitivity);
                 hasMoved = true;
             }
@@ -235,27 +227,26 @@ class Frustris {
 
         touchZone.addEventListener('touchend', (e) => {
             e.preventDefault();
-            if (this.isPaused) return;
+            if (this.isPaused || !this.hasStarted) return;
 
-            // If it was just a quick tap without significant movement, perform Hard Drop
             if (!hasMoved) {
                 this.keys['Space'] = true;
                 setTimeout(() => { this.keys['Space'] = false; }, 50);
             }
         });
 
-        // Pause
         mobilePause.addEventListener('click', (e) => {
             e.target.blur();
-            this.togglePause();
+            if (this.hasStarted) this.togglePause();
         });
         mobilePause.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            this.togglePause();
+            if (this.hasStarted) this.togglePause();
         });
     }
 
     togglePause() {
+        if (!this.hasStarted) return;
         this.isPaused = !this.isPaused;
         if (this.isPaused) {
             this.pauseModal.classList.remove('hidden');
@@ -276,30 +267,20 @@ class Frustris {
         if (this.keys['ArrowLeft']) vx = -moveSpeed;
         if (this.keys['ArrowRight']) vx = moveSpeed;
 
-        // Apply horizontal velocity explicitly every update to prevent unwanted sliding
-        // If vx is 0, it will stop the lateral movement immediately.
         Body.setVelocity(this.activePiece, { x: vx, y: this.activePiece.velocity.y });
 
-        if (this.keys['KeyA']) {
-            Body.rotate(this.activePiece, -rotateSpeed);
-        }
-        if (this.keys['KeyD']) {
-            Body.rotate(this.activePiece, rotateSpeed);
-        }
-        if (this.keys['ArrowDown']) {
-            Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 8 });
-        }
+        if (this.keys['KeyA']) Body.rotate(this.activePiece, -rotateSpeed);
+        if (this.keys['KeyD']) Body.rotate(this.activePiece, rotateSpeed);
+        if (this.keys['ArrowDown']) Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 8 });
+
         if (this.keys['Space']) {
             if (!this.isTouchingPile) {
-                // High speed descent in mid-air
                 Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 15 });
             } else {
-                // If touching, allow it to settle completely
                 Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 0.01 });
             }
         }
 
-        // Keep inside horizontal walls - but using physics-friendly clamping
         const pos = this.activePiece.position;
         if (pos.x < 15) Body.setPosition(this.activePiece, { x: 15, y: pos.y });
         if (pos.x > this.width - 15) Body.setPosition(this.activePiece, { x: this.width - 15, y: pos.y });
@@ -310,7 +291,6 @@ class Frustris {
 
         const now = Date.now();
 
-        // 1. Handle Active Piece settling
         if (this.activePiece) {
             const bodies = this.engine.world.bodies;
             const obstacles = [];
@@ -325,9 +305,7 @@ class Frustris {
 
             const speed = this.activePiece.speed;
             const pos = this.activePiece.position;
-            const age = now - this.activePiece.spawnTime;
 
-            // Stuck detection: If piece hasn't moved significantly in 1.5 seconds
             const distMoved = Vector.magnitude(Vector.sub(pos, this.activePiece.lastPos));
             if (distMoved > 2) {
                 this.activePiece.lastPos = { x: pos.x, y: pos.y };
@@ -335,24 +313,16 @@ class Frustris {
             }
             const timeStagnant = now - this.activePiece.lastMoveTime;
 
-            // Settle conditions:
-            // - Speed is low AND touching something
-            // - OR it's deep in the pile and hasn't moved for a while (stuck)
-            // - OR it hits the very bottom floor area
             const isStuck = timeStagnant > 1500 && pos.y > 200;
             const atBottom = pos.y > this.height - 100;
 
             if ((speed < 1.2 && isTouching) || atBottom || isStuck) {
-                console.log("Piece retired:", this.activePiece.pieceType, isStuck ? "(stuck-fix)" : "");
                 this.activePiece.label = 'settled';
                 this.activePiece = null;
                 this.score += 10;
                 this.lastActionTime = now;
                 this.updateUI();
-
                 this.checkClears();
-
-                // Spawn next piece
                 setTimeout(() => this.spawnPiece(), 300);
             }
         }
@@ -364,7 +334,6 @@ class Frustris {
         for (let i = 0; i < bodies.length; i++) {
             const b = bodies[i];
             if (b.label === 'settled') {
-                // Increased threshold to ignore physics jitters
                 if (b.speed > 1.5) movingCount++;
                 if (b.position.y < minY) minY = b.position.y;
             }
@@ -372,28 +341,20 @@ class Frustris {
 
         const anyMoving = movingCount > 0;
 
-        // If something was moving but now everything is still, trigger a clear check
         if (this.wasMoving && !anyMoving) {
-            console.log("Pile stopped moving, checking clears...");
             this.checkClears();
             this.lastActionTime = now;
         }
         this.wasMoving = anyMoving;
 
-        // 3. Update Pile Meter (visual height)
         const heightOfPile = this.height - minY;
         const pilePercent = Math.max(0, Math.min(100, (heightOfPile / (this.height * 0.8)) * 100));
         this.pileMeter.style.width = `${pilePercent}%`;
         this.pileMeter.style.background = pilePercent > 85 ? 'var(--danger)' : 'var(--accent-secondary)';
 
-        // 4. Robust Spawn Recovery: If nothing is active and nothing is moving, force spawn
         if (!this.activePiece && !anyMoving && (now - this.lastActionTime > 800)) {
             this.spawnPiece();
         }
-    }
-
-    checkGameOver() {
-        // Now handled inside spawnPiece to prevent false positives during clears
     }
 
     triggerGameOver() {
@@ -406,6 +367,23 @@ class Frustris {
 
     updateUI() {
         this.scoreElement.innerText = this.score.toString().padStart(6, '0');
+        if (this.currentLevel === 1 && this.score >= 5000) {
+            this.levelUp();
+        }
+    }
+
+    levelUp() {
+        this.currentLevel = 2;
+        this.minToClear = 4;
+        this.showLevelTwoSplash();
+    }
+
+    showLevelTwoSplash() {
+        const splash = document.getElementById('level-two-splash');
+        splash.classList.remove('hidden');
+        setTimeout(() => {
+            splash.classList.add('hidden');
+        }, 1500);
     }
 
     screenShake(magnitude = 5) {
@@ -450,7 +428,6 @@ class Frustris {
 
         for (let i = 0; i < bodies.length; i++) {
             const b = bodies[i];
-            // Only consider the top-level body for grouping, not its individual part bodies
             if (b.label === 'settled' && b.parent === b) {
                 settled.push(b);
                 if (!byType[b.pieceType]) byType[b.pieceType] = [];
@@ -458,12 +435,11 @@ class Frustris {
             }
         }
 
-        if (settled.length < 3) return;
+        if (settled.length < this.minToClear) return;
 
         const toRemove = new Set();
         const visited = new Set();
 
-        // Exact block-to-block proximity check for high reliability
         for (const type in byType) {
             const pieces = byType[type];
             for (let i = 0; i < pieces.length; i++) {
@@ -483,18 +459,13 @@ class Frustris {
                         if (visited.has(other.id)) continue;
 
                         let isTouching = false;
-
-                        // 1. Precise Physics Check
                         if (Matter.Query.collides(current, [other]).length > 0) {
                             isTouching = true;
                         }
 
-                        // 2. Forgiving Distance Check (Part-to-Part)
                         if (!isTouching) {
                             const partsA = current.parts.length > 1 ? current.parts.slice(1) : [current];
                             const partsB = other.parts.length > 1 ? other.parts.slice(1) : [other];
-                            // Corner-to-corner is 42.4px center-to-center. 
-                            // BLOCK_SIZE * 1.5 = 45px, which is a perfect threshold.
                             const threshold = BLOCK_SIZE * 1.5;
 
                             outer: for (let pA of partsA) {
@@ -515,29 +486,23 @@ class Frustris {
                     }
                 }
 
-                if (group.length >= 3) {
+                if (group.length >= this.minToClear) {
                     for (let p of group) toRemove.add(p);
                 }
             }
         }
 
         if (toRemove.size > 0) {
-            console.log("Clearing pieces:", toRemove.size);
             this.screenShake(12);
             this.showClearBonus();
             this.score += toRemove.size * 100;
-
             toRemove.forEach(p => Composite.remove(this.engine.world, p));
-
-            // Force wake up for everything remaining
             const remaining = Composite.allBodies(this.engine.world);
             remaining.forEach(b => Sleeping.set(b, false));
-
             this.updateUI();
             this.lastActionTime = Date.now();
         }
     }
-
 
     startGameLoop() {
         const loop = () => {
