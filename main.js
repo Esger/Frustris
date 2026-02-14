@@ -18,6 +18,7 @@ class Frustris {
         this.isPaused = false;
         this.activePiece = null;
         this.keys = {};
+        this.isTouchingPile = false;
 
         this.pauseModal = document.getElementById('pause-modal');
         this.resumeBtn = document.getElementById('resume-btn');
@@ -111,6 +112,7 @@ class Frustris {
 
         // Set initial label to identify active piece
         this.activePiece.label = 'active';
+        this.isTouchingPile = false;
 
         Composite.add(this.engine.world, this.activePiece);
     }
@@ -139,14 +141,93 @@ class Frustris {
             this.togglePause();
         });
 
+        this.initMobileControls();
+
         // Check for collisions to settle pieces
         Events.on(this.engine, 'collisionStart', (event) => {
             event.pairs.forEach(pair => {
-                if (pair.bodyA === this.activePiece || pair.bodyB === this.activePiece) {
-                    // Start a timer to settle the piece? 
-                    // Or just spawn next piece when the active one stops moving fast.
+                if (this.activePiece && (pair.bodyA === this.activePiece || pair.bodyB === this.activePiece)) {
+                    this.isTouchingPile = true;
                 }
             });
+        });
+    }
+
+    initMobileControls() {
+        const touchZone = document.getElementById('touch-zone');
+        const mobilePause = document.getElementById('mobile-pause');
+
+        let startX = 0;
+        let startY = 0;
+        let lastX = 0;
+        let lastY = 0;
+        let hasMoved = false;
+
+        touchZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            startX = lastX = touch.clientX;
+            startY = lastY = touch.clientY;
+            hasMoved = false;
+        });
+
+        touchZone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (this.isPaused || !this.activePiece) return;
+
+            const touch = e.touches[0];
+            const currentX = touch.clientX;
+            const currentY = touch.clientY;
+
+            const dx = currentX - lastX;
+            const dy = currentY - lastY;
+
+            // Sensitivity
+            const moveSensitivity = 1.0;
+            const rotateSensitivity = 0.05;
+
+            // Lateral Movement (X delta)
+            if (Math.abs(dx) > 1) {
+                const newX = this.activePiece.position.x + (dx * moveSensitivity);
+                // Clamp within walls
+                const clampedX = Math.max(20, Math.min(this.width - 20, newX));
+                Body.setPosition(this.activePiece, {
+                    x: clampedX,
+                    y: this.activePiece.position.y
+                });
+                hasMoved = true;
+            }
+
+            // Rotation (Y delta)
+            if (Math.abs(dy) > 1) {
+                // dy > 0 (down) -> clockwise, dy < 0 (up) -> counterclockwise
+                Body.rotate(this.activePiece, dy * rotateSensitivity);
+                hasMoved = true;
+            }
+
+            lastX = currentX;
+            lastY = currentY;
+        });
+
+        touchZone.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (this.isPaused) return;
+
+            // If it was just a quick tap without significant movement, perform Hard Drop
+            if (!hasMoved) {
+                this.keys['Space'] = true;
+                setTimeout(() => { this.keys['Space'] = false; }, 50);
+            }
+        });
+
+        // Pause
+        mobilePause.addEventListener('click', (e) => {
+            e.target.blur();
+            this.togglePause();
+        });
+        mobilePause.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.togglePause();
         });
     }
 
@@ -185,7 +266,9 @@ class Frustris {
             Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 8 });
         }
         if (this.keys['Space']) {
-            Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 15 });
+            // If already touching, don't push as hard to prevent tunneling
+            const dropVelocity = this.isTouchingPile ? 4 : 15;
+            Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: dropVelocity });
         }
 
         // Keep inside horizontal walls - but using physics-friendly clamping

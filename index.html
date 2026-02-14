@@ -27,22 +27,30 @@
                 <div class="ui-overlay">
                     <header>
                         <h1 class="logo">FRUSTRIS</h1>
-                        <div class="stats">
-                            <div class="stat-box">
-                                <span class="label">SCORE</span>
-                                <span id="score-val" class="value">000000</span>
-                            </div>
-                            <div class="stat-box">
-                                <span class="label">PILE</span>
-                                <div class="progress-bar">
-                                    <div id="pile-meter"
-                                         class="progress-fill"></div>
+                        <div class="header-right">
+                            <button id="mobile-pause" class="mobile-only-icon">||</button>
+                            <div class="stats">
+                                <div class="stat-box">
+                                    <span class="label">SCORE</span>
+                                    <span id="score-val" class="value">000000</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="label">PILE</span>
+                                    <div class="progress-bar">
+                                        <div id="pile-meter"
+                                             class="progress-fill"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </header>
 
-                    <div class="controls-hint">
+                    <div class="mobile-controls">
+                        <div id="touch-zone"
+                             class="control-zone gestures"></div>
+                    </div>
+
+                    <div class="controls-hint desktop-only">
                         <p><span>&larr;&rarr;</span> Move</p>
                         <p><span>A / D</span> Rotate Smoothly</p>
                         <p><span>&darr;</span> Soft Drop</p>
