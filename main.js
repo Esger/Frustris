@@ -91,6 +91,9 @@ class Frustris {
             restitution: 0.2
         });
 
+        // Store the piece type for match-3 logic
+        this.activePiece.pieceType = type;
+
         // Strictly center the piece at the top
         Body.setPosition(this.activePiece, { x: this.width / 2, y: 50 });
 
@@ -227,35 +230,75 @@ class Frustris {
     }
 
     checkClears() {
-        // Find all blocks that have settled
         const settled = Composite.allBodies(this.engine.world).filter(b => b.label === 'settled');
 
-        // Update the pile meter based on the highest settled block
+        // Update the pile meter based on height
         const minY = Math.min(...settled.map(b => b.position.y), this.height);
-        const pilePercent = Math.max(0, Math.min(100, ((this.height - minY) / 300) * 100)); // Normalized to a much smaller 'full' height
+        const pilePercent = Math.max(0, Math.min(100, ((this.height - minY) / 400) * 100));
         this.pileMeter.style.width = `${pilePercent}%`;
+        this.pileMeter.style.background = pilePercent > 80 ? 'var(--danger)' : 'var(--accent-secondary)';
 
-        if (pilePercent > 70) {
-            this.pileMeter.style.background = 'var(--danger)';
-        } else {
-            this.pileMeter.style.background = 'var(--accent-secondary)';
-        }
+        // Match-3 Logic: Remove 3+ pieces of the same type that are touching
+        const toRemove = new Set();
+        const visited = new Set();
 
-        // Maintain a shallow 'rubbish' pile (approx 2-3 layers of mess)
-        // We clear very aggressively to keep it feeling like a shallow collection of junk
-        if (settled.length > 12) {
-            // Sort by Y position descending (bottom-most first)
-            settled.sort((a, b) => b.position.y - a.position.y);
+        settled.forEach(piece => {
+            if (visited.has(piece.id)) return;
 
-            // Remove the 4 bottom-most pieces to maintain that 'layers' look
-            const toRemove = settled.slice(0, 4);
+            // Find all connected pieces of the same type
+            const component = [];
+            const stack = [piece];
+            visited.add(piece.id);
 
-            this.screenShake(6);
+            while (stack.length > 0) {
+                const current = stack.pop();
+                component.push(current);
+
+                // Find neighbors of the same type that are touching
+                settled.forEach(other => {
+                    if (visited.has(other.id) || current.pieceType !== other.pieceType) return;
+
+                    // Forgiving touch detection: 
+                    // 1. Check direct collision
+                    // 2. Check if any individual parts are within a small distance (5px buffer)
+                    let isTouching = Matter.Query.collides(current, [other]).length > 0;
+
+                    if (!isTouching) {
+                        const threshold = BLOCK_SIZE + 5; // Allow 5px gap
+                        const partsA = current.parts.slice(1);
+                        const partsB = other.parts.slice(1);
+
+                        outer: for (let pA of partsA) {
+                            for (let pB of partsB) {
+                                const d = Vector.magnitude(Vector.sub(pA.position, pB.position));
+                                if (d < threshold) {
+                                    isTouching = true;
+                                    break outer;
+                                }
+                            }
+                        }
+                    }
+
+                    if (isTouching) {
+                        visited.add(other.id);
+                        stack.push(other);
+                    }
+                });
+            }
+
+            // If we found a group of 3 or more, mark them for removal
+            if (component.length >= 3) {
+                component.forEach(p => toRemove.add(p));
+            }
+        });
+
+        if (toRemove.size > 0) {
+            this.screenShake(12);
             this.showClearBonus();
-            this.score += 250;
+            this.score += toRemove.size * 100;
 
-            toRemove.forEach(b => {
-                Composite.remove(this.engine.world, b);
+            toRemove.forEach(p => {
+                Composite.remove(this.engine.world, p);
             });
             this.updateUI();
         }
