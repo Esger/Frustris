@@ -15,8 +15,18 @@ class Frustris {
 
         this.score = 0;
         this.isGameOver = false;
+        this.isPaused = false;
         this.activePiece = null;
         this.keys = {};
+
+        this.pauseModal = document.getElementById('pause-modal');
+        this.resumeBtn = document.getElementById('resume-btn');
+        this.controlsHint = document.querySelector('.controls-hint');
+
+        // Fade instructions after 10 seconds
+        setTimeout(() => {
+            if (this.controlsHint) this.controlsHint.classList.add('faded');
+        }, 10000);
 
         this.width = 400;
         this.height = 700;
@@ -30,8 +40,9 @@ class Frustris {
     initPhysics() {
         this.engine = Engine.create({
             gravity: { y: 0.3 },
-            positionIterations: 10,
-            velocityIterations: 10
+            positionIterations: 6, // Reduced from 10 for performance
+            velocityIterations: 6, // Reduced from 10 for performance
+            enableSleeping: true   // Allows settled pieces to stop being processed
         });
 
         this.render = Render.create({
@@ -80,7 +91,8 @@ class Frustris {
                 BLOCK_SIZE - 2,
                 {
                     render: { fillStyle: data.color },
-                    chamfer: { radius: 4 }
+                    chamfer: { radius: 4 },
+                    sleepThreshold: 30 // Make parts go to sleep faster
                 }
             );
         });
@@ -104,11 +116,20 @@ class Frustris {
     }
 
     addEventListeners() {
-        window.addEventListener('keydown', (e) => this.keys[e.code] = true);
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape' && !this.isGameOver) {
+                this.togglePause();
+            }
+            this.keys[e.code] = true;
+        });
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
         this.restartBtn.addEventListener('click', () => {
             location.reload();
+        });
+
+        this.resumeBtn.addEventListener('click', () => {
+            this.togglePause();
         });
 
         // Check for collisions to settle pieces
@@ -122,8 +143,19 @@ class Frustris {
         });
     }
 
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        if (this.isPaused) {
+            this.pauseModal.classList.remove('hidden');
+            this.runner.enabled = false;
+        } else {
+            this.pauseModal.classList.add('hidden');
+            this.runner.enabled = true;
+        }
+    }
+
     handleInput() {
-        if (!this.activePiece || this.isGameOver) return;
+        if (!this.activePiece || this.isGameOver || this.isPaused) return;
 
         const moveSpeed = 6;
         const rotateSpeed = 0.08;
@@ -168,10 +200,15 @@ class Frustris {
             this.score += 10;
             this.updateUI();
 
-            setTimeout(() => this.spawnPiece(), 500);
+            // Perform checks only when a piece actually settles
             this.checkClears();
-        }
+            this.checkGameOver();
 
+            setTimeout(() => this.spawnPiece(), 500);
+        }
+    }
+
+    checkGameOver() {
         // Game over check - only if pile becomes extremely high (reaching top 15% of screen)
         const staticBodies = Composite.allBodies(this.engine.world).filter(b => b.label === 'settled');
         for (let b of staticBodies) {
@@ -307,8 +344,10 @@ class Frustris {
 
     startGameLoop() {
         const loop = () => {
-            this.handleInput();
-            this.checkSettle();
+            if (!this.isPaused) {
+                this.handleInput();
+                this.checkSettle();
+            }
             requestAnimationFrame(loop);
         };
         requestAnimationFrame(loop);

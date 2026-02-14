@@ -148,6 +148,21 @@ header {
     flex-direction: column;
     gap: 8px;
     width: fit-content;
+    opacity: 1;
+    /* Start fully visible as requested */
+    transition: opacity 1s ease;
+    /* Smooth fade effect */
+    cursor: default;
+    pointer-events: auto;
+    /* Explicitly ensure hover detection works */
+}
+
+.controls-hint.faded {
+    opacity: 0.1;
+}
+
+.controls-hint:hover {
+    opacity: 1.0 !important;
 }
 
 .controls-hint span {
@@ -185,6 +200,11 @@ header {
 .modal-content h2 {
     font-size: 32px;
     margin-bottom: 16px;
+    color: var(--accent-secondary);
+    /* Changed from danger to accent for general modals */
+}
+
+.modal.game-over-modal h2 {
     color: var(--danger);
 }
 
@@ -212,6 +232,7 @@ button {
     font-weight: 700;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+    margin-top: 32px;
 }
 
 button:hover {
