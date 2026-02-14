@@ -2,7 +2,7 @@ import Matter from 'matter-js';
 import { TETROMINOES, BLOCK_SIZE } from './tetrominoes.js';
 
 // Alias
-const { Engine, Render, Runner, Bodies, Composite, Body, Events, Vector } = Matter;
+const { Engine, Render, Runner, Bodies, Composite, Body, Events, Vector, Sleeping } = Matter;
 
 class Frustris {
     constructor() {
@@ -19,6 +19,8 @@ class Frustris {
         this.activePiece = null;
         this.keys = {};
         this.isTouchingPile = false;
+        this.wasMoving = false;
+        this.lastActionTime = Date.now();
 
         this.pauseModal = document.getElementById('pause-modal');
         this.resumeBtn = document.getElementById('resume-btn');
@@ -36,6 +38,9 @@ class Frustris {
         this.addEventListeners();
         this.spawnPiece();
         this.startGameLoop();
+
+        // Debug accessibility
+        window.frustris = this;
     }
 
     initPhysics() {
@@ -78,10 +83,34 @@ class Frustris {
     }
 
     spawnPiece() {
-        if (this.isGameOver) return;
+        if (this.isGameOver || this.activePiece) return;
+
+        // Check for Game Over before spawning
+        const bodies = this.engine.world.bodies;
+        const thresholdY = 160;
+        let blocked = false;
+
+        for (let i = 0; i < bodies.length; i++) {
+            const b = bodies[i];
+            // If a settled block is blocking the spawn area
+            if (b.label === 'settled' && b.position.y < thresholdY && b.speed < 0.1) {
+                // Only block if it's near the center horizontally
+                if (Math.abs(b.position.x - this.width / 2) < 100) {
+                    blocked = true;
+                    break;
+                }
+            }
+        }
+
+        if (blocked) {
+            console.log("Spawn blocked at Y:", thresholdY);
+            this.triggerGameOver();
+            return;
+        }
 
         const types = Object.keys(TETROMINOES);
         const type = types[Math.floor(Math.random() * types.length)];
+        console.log("Spawning piece:", type);
         const data = TETROMINOES[type];
 
         const parts = data.shape.map(pos => {
@@ -112,7 +141,11 @@ class Frustris {
 
         // Set initial label to identify active piece
         this.activePiece.label = 'active';
+        this.activePiece.spawnTime = Date.now();
+        this.activePiece.lastPos = { x: this.width / 2, y: 50 };
+        this.activePiece.lastMoveTime = Date.now();
         this.isTouchingPile = false;
+        this.lastActionTime = Date.now();
 
         Composite.add(this.engine.world, this.activePiece);
     }
@@ -142,15 +175,6 @@ class Frustris {
         });
 
         this.initMobileControls();
-
-        // Check for collisions to settle pieces
-        Events.on(this.engine, 'collisionStart', (event) => {
-            event.pairs.forEach(pair => {
-                if (this.activePiece && (pair.bodyA === this.activePiece || pair.bodyB === this.activePiece)) {
-                    this.isTouchingPile = true;
-                }
-            });
-        });
     }
 
     initMobileControls() {
@@ -266,9 +290,13 @@ class Frustris {
             Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 8 });
         }
         if (this.keys['Space']) {
-            // If already touching, don't push as hard to prevent tunneling
-            const dropVelocity = this.isTouchingPile ? 4 : 15;
-            Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: dropVelocity });
+            if (!this.isTouchingPile) {
+                // High speed descent in mid-air
+                Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 15 });
+            } else {
+                // If touching, allow it to settle completely
+                Body.setVelocity(this.activePiece, { x: this.activePiece.velocity.x, y: 0.01 });
+            }
         }
 
         // Keep inside horizontal walls - but using physics-friendly clamping
@@ -278,35 +306,94 @@ class Frustris {
     }
 
     checkSettle() {
-        if (!this.activePiece) return;
+        if (this.isPaused || this.isGameOver) return;
 
-        const vel = this.activePiece.velocity;
-        const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+        const now = Date.now();
 
-        // If piece is slow and below a certain height, or has hit something and stopped
-        if (speed < 0.2 && this.activePiece.position.y > 100) {
-            this.activePiece.label = 'settled';
-            this.activePiece = null;
-            this.score += 10;
-            this.updateUI();
+        // 1. Handle Active Piece settling
+        if (this.activePiece) {
+            const bodies = this.engine.world.bodies;
+            const obstacles = [];
+            for (let i = 0; i < bodies.length; i++) {
+                if (bodies[i].label === 'settled' || bodies[i].label === 'ground') {
+                    obstacles.push(bodies[i]);
+                }
+            }
 
-            // Perform checks only when a piece actually settles
+            const isTouching = Matter.Query.collides(this.activePiece, obstacles).length > 0;
+            this.isTouchingPile = isTouching;
+
+            const speed = this.activePiece.speed;
+            const pos = this.activePiece.position;
+            const age = now - this.activePiece.spawnTime;
+
+            // Stuck detection: If piece hasn't moved significantly in 1.5 seconds
+            const distMoved = Vector.magnitude(Vector.sub(pos, this.activePiece.lastPos));
+            if (distMoved > 2) {
+                this.activePiece.lastPos = { x: pos.x, y: pos.y };
+                this.activePiece.lastMoveTime = now;
+            }
+            const timeStagnant = now - this.activePiece.lastMoveTime;
+
+            // Settle conditions:
+            // - Speed is low AND touching something
+            // - OR it's deep in the pile and hasn't moved for a while (stuck)
+            // - OR it hits the very bottom floor area
+            const isStuck = timeStagnant > 1500 && pos.y > 200;
+            const atBottom = pos.y > this.height - 100;
+
+            if ((speed < 1.2 && isTouching) || atBottom || isStuck) {
+                console.log("Piece retired:", this.activePiece.pieceType, isStuck ? "(stuck-fix)" : "");
+                this.activePiece.label = 'settled';
+                this.activePiece = null;
+                this.score += 10;
+                this.lastActionTime = now;
+                this.updateUI();
+
+                this.checkClears();
+
+                // Spawn next piece
+                setTimeout(() => this.spawnPiece(), 300);
+            }
+        }
+
+        const bodies = Composite.allBodies(this.engine.world);
+        let movingCount = 0;
+        let minY = this.height;
+
+        for (let i = 0; i < bodies.length; i++) {
+            const b = bodies[i];
+            if (b.label === 'settled') {
+                // Increased threshold to ignore physics jitters
+                if (b.speed > 1.5) movingCount++;
+                if (b.position.y < minY) minY = b.position.y;
+            }
+        }
+
+        const anyMoving = movingCount > 0;
+
+        // If something was moving but now everything is still, trigger a clear check
+        if (this.wasMoving && !anyMoving) {
+            console.log("Pile stopped moving, checking clears...");
             this.checkClears();
-            this.checkGameOver();
+            this.lastActionTime = now;
+        }
+        this.wasMoving = anyMoving;
 
-            setTimeout(() => this.spawnPiece(), 500);
+        // 3. Update Pile Meter (visual height)
+        const heightOfPile = this.height - minY;
+        const pilePercent = Math.max(0, Math.min(100, (heightOfPile / (this.height * 0.8)) * 100));
+        this.pileMeter.style.width = `${pilePercent}%`;
+        this.pileMeter.style.background = pilePercent > 85 ? 'var(--danger)' : 'var(--accent-secondary)';
+
+        // 4. Robust Spawn Recovery: If nothing is active and nothing is moving, force spawn
+        if (!this.activePiece && !anyMoving && (now - this.lastActionTime > 800)) {
+            this.spawnPiece();
         }
     }
 
     checkGameOver() {
-        // Game over check - only if pile becomes extremely high (reaching top 15% of screen)
-        const staticBodies = Composite.allBodies(this.engine.world).filter(b => b.label === 'settled');
-        for (let b of staticBodies) {
-            if (b.position.y < 100) {
-                this.triggerGameOver();
-                break;
-            }
-        }
+        // Now handled inside spawnPiece to prevent false positives during clears
     }
 
     triggerGameOver() {
@@ -357,77 +444,97 @@ class Frustris {
     }
 
     checkClears() {
-        const settled = Composite.allBodies(this.engine.world).filter(b => b.label === 'settled');
+        const bodies = Composite.allBodies(this.engine.world);
+        const byType = {};
+        const settled = [];
 
-        // Update the pile meter based on height
-        const minY = Math.min(...settled.map(b => b.position.y), this.height);
-        const pilePercent = Math.max(0, Math.min(100, ((this.height - minY) / 400) * 100));
-        this.pileMeter.style.width = `${pilePercent}%`;
-        this.pileMeter.style.background = pilePercent > 80 ? 'var(--danger)' : 'var(--accent-secondary)';
+        for (let i = 0; i < bodies.length; i++) {
+            const b = bodies[i];
+            // Only consider the top-level body for grouping, not its individual part bodies
+            if (b.label === 'settled' && b.parent === b) {
+                settled.push(b);
+                if (!byType[b.pieceType]) byType[b.pieceType] = [];
+                byType[b.pieceType].push(b);
+            }
+        }
 
-        // Match-3 Logic: Remove 3+ pieces of the same type that are touching
+        if (settled.length < 3) return;
+
         const toRemove = new Set();
         const visited = new Set();
 
-        settled.forEach(piece => {
-            if (visited.has(piece.id)) return;
+        // Exact block-to-block proximity check for high reliability
+        for (const type in byType) {
+            const pieces = byType[type];
+            for (let i = 0; i < pieces.length; i++) {
+                const piece = pieces[i];
+                if (visited.has(piece.id)) continue;
 
-            // Find all connected pieces of the same type
-            const component = [];
-            const stack = [piece];
-            visited.add(piece.id);
+                const group = [];
+                const stack = [piece];
+                visited.add(piece.id);
 
-            while (stack.length > 0) {
-                const current = stack.pop();
-                component.push(current);
+                while (stack.length > 0) {
+                    const current = stack.pop();
+                    group.push(current);
 
-                // Find neighbors of the same type that are touching
-                settled.forEach(other => {
-                    if (visited.has(other.id) || current.pieceType !== other.pieceType) return;
+                    for (let j = 0; j < pieces.length; j++) {
+                        const other = pieces[j];
+                        if (visited.has(other.id)) continue;
 
-                    // Forgiving touch detection: 
-                    // 1. Check direct collision
-                    // 2. Check if any individual parts are within a small distance (5px buffer)
-                    let isTouching = Matter.Query.collides(current, [other]).length > 0;
+                        let isTouching = false;
 
-                    if (!isTouching) {
-                        const threshold = BLOCK_SIZE + 5; // Allow 5px gap
-                        const partsA = current.parts.slice(1);
-                        const partsB = other.parts.slice(1);
+                        // 1. Precise Physics Check
+                        if (Matter.Query.collides(current, [other]).length > 0) {
+                            isTouching = true;
+                        }
 
-                        outer: for (let pA of partsA) {
-                            for (let pB of partsB) {
-                                const d = Vector.magnitude(Vector.sub(pA.position, pB.position));
-                                if (d < threshold) {
-                                    isTouching = true;
-                                    break outer;
+                        // 2. Forgiving Distance Check (Part-to-Part)
+                        if (!isTouching) {
+                            const partsA = current.parts.length > 1 ? current.parts.slice(1) : [current];
+                            const partsB = other.parts.length > 1 ? other.parts.slice(1) : [other];
+                            // Corner-to-corner is 42.4px center-to-center. 
+                            // BLOCK_SIZE * 1.5 = 45px, which is a perfect threshold.
+                            const threshold = BLOCK_SIZE * 1.5;
+
+                            outer: for (let pA of partsA) {
+                                for (let pB of partsB) {
+                                    const d = Vector.magnitude(Vector.sub(pA.position, pB.position));
+                                    if (d < threshold) {
+                                        isTouching = true;
+                                        break outer;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (isTouching) {
-                        visited.add(other.id);
-                        stack.push(other);
+                        if (isTouching) {
+                            visited.add(other.id);
+                            stack.push(other);
+                        }
                     }
-                });
-            }
+                }
 
-            // If we found a group of 3 or more, mark them for removal
-            if (component.length >= 3) {
-                component.forEach(p => toRemove.add(p));
+                if (group.length >= 3) {
+                    for (let p of group) toRemove.add(p);
+                }
             }
-        });
+        }
 
         if (toRemove.size > 0) {
+            console.log("Clearing pieces:", toRemove.size);
             this.screenShake(12);
             this.showClearBonus();
             this.score += toRemove.size * 100;
 
-            toRemove.forEach(p => {
-                Composite.remove(this.engine.world, p);
-            });
+            toRemove.forEach(p => Composite.remove(this.engine.world, p));
+
+            // Force wake up for everything remaining
+            const remaining = Composite.allBodies(this.engine.world);
+            remaining.forEach(b => Sleeping.set(b, false));
+
             this.updateUI();
+            this.lastActionTime = Date.now();
         }
     }
 
