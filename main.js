@@ -117,6 +117,11 @@ class Frustris {
 
     addEventListeners() {
         window.addEventListener('keydown', (e) => {
+            // Prevent default behavior for game keys (scrolling, focusing, etc)
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'KeyA', 'KeyD', 'Escape'].includes(e.code)) {
+                e.preventDefault();
+            }
+
             if (e.code === 'Escape' && !this.isGameOver) {
                 this.togglePause();
             }
@@ -124,11 +129,13 @@ class Frustris {
         });
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
-        this.restartBtn.addEventListener('click', () => {
+        this.restartBtn.addEventListener('click', (e) => {
+            e.target.blur();
             location.reload();
         });
 
-        this.resumeBtn.addEventListener('click', () => {
+        this.resumeBtn.addEventListener('click', (e) => {
+            e.target.blur();
             this.togglePause();
         });
 
