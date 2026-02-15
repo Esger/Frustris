@@ -27,6 +27,8 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 #app {
@@ -35,6 +37,8 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .game-container {

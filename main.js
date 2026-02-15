@@ -252,22 +252,20 @@ class Frustris {
 
         // Pointer Events (Unified Mouse/Touch)
         touchZone.addEventListener('pointerdown', (e) => {
-            touchZone.setPointerCapture(e.pointerId);
             onStart(e.clientX, e.clientY);
-        });
 
-        touchZone.addEventListener('pointermove', (e) => {
-            onMove(e.clientX, e.clientY);
-        });
+            // Listen on window to catch movement even outside the canvas
+            const moveHandler = (moveEv) => onMove(moveEv.clientX, moveEv.clientY);
+            const upHandler = () => {
+                onEnd();
+                window.removeEventListener('pointermove', moveHandler);
+                window.removeEventListener('pointerup', upHandler);
+                window.removeEventListener('pointercancel', upHandler);
+            };
 
-        touchZone.addEventListener('pointerup', (e) => {
-            touchZone.releasePointerCapture(e.pointerId);
-            onEnd();
-        });
-
-        touchZone.addEventListener('pointercancel', (e) => {
-            touchZone.releasePointerCapture(e.pointerId);
-            isDragging = false;
+            window.addEventListener('pointermove', moveHandler);
+            window.addEventListener('pointerup', upHandler);
+            window.addEventListener('pointercancel', upHandler);
         });
 
         // Prevention for old mobile browsers / scrolling
