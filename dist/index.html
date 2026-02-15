@@ -18,8 +18,8 @@
         <link rel="icon"
               type="image/svg+xml"
               href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyBmaWxsPSdibGFjaycvPjxnIHRyYW5zZm9ybT0ncm90YXRlKDE1IDE2IDE2KSc+PHBhdGggZD0nTTEwIDZoNHYxMmg4djRoLTEyeicgZmlsbD0nI0ZGRDYwMCcvPjwvZz48L3N2Zz4=">
-      <script type="module" crossorigin src="/assets/index-BOdl8sH3.js"></script>
-      <link rel="stylesheet" crossorigin href="/assets/index-D0rfrleK.css">
+      <script type="module" crossorigin src="./assets/index-Dxcd8FSu.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-t0mSeI7J.css">
     </head>
 
     <body>
@@ -29,7 +29,11 @@
 
                 <div class="ui-overlay">
                     <header>
-                        <h1 class="logo">FRUSTRIS</h1>
+                        <div class="logo-group">
+                            <h1 class="logo">FRUSTRIS</h1>
+                            <div id="next-preview"
+                                 class="next-preview"></div>
+                        </div>
                         <div class="header-right">
                             <button id="mobile-pause" class="mobile-only-icon">||</button>
                             <div class="stats">
@@ -64,9 +68,9 @@
                             <p>Tetris, but with physics.</p>
                             <div class="instructions-list">
                                 <div class="desktop-only">
-                                    <p><span>&larr;&rarr;</span> Move</p>
-                                    <p><span>A/D</span> Smooth Rotate</p>
-                                    <p><span>SPACE</span> Hard Drop</p>
+                                    <p><span>DRAG</span> Move / Rotate</p>
+                                    <p><span>CLICK</span> Hard Drop</p>
+                                    <p><span>KEYS</span> &larr;&rarr; / A / D / Space</p>
                                     <p><span>ESC</span> Pause</p>
                                 </div>
                                 <div class="mobile-only-block">
@@ -103,9 +107,9 @@
                             <h2>PAUSED</h2>
                             <div class="instructions-list">
                                 <div class="desktop-only">
-                                    <p><span>&larr;&rarr;</span> Move</p>
-                                    <p><span>A/D</span> Smooth Rotate</p>
-                                    <p><span>SPACE</span> Hard Drop</p>
+                                    <p><span>DRAG</span> Move / Rotate</p>
+                                    <p><span>CLICK</span> Hard Drop</p>
+                                    <p><span>KEYS</span> &larr;&rarr; / A / D / Space</p>
                                 </div>
                                 <div class="mobile-only-block">
                                     <p><span>SWIPE</span> Move / Rotate</p>

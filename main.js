@@ -27,6 +27,7 @@ class Frustris {
         this.wasMoving = false;
         this.lastActionTime = Date.now();
         this.highScoreBroken = false;
+        this.sessionInitialHighScore = this.highScore;
 
         this.pauseModal = document.getElementById('pause-modal');
         this.resumeBtn = document.getElementById('resume-btn');
@@ -36,8 +37,14 @@ class Frustris {
 
         this.initPhysics();
         this.addEventListeners();
-        this.updateUI();
 
+        // Initialize Next Piece System
+        this.nextPreviewElement = document.getElementById('next-preview');
+        this.allTypes = Object.keys(TETROMINOES);
+        this.nextPieceType = this.allTypes[Math.floor(Math.random() * this.allTypes.length)];
+
+        this.updateUI();
+        this.updatePreview();
     }
 
     initPhysics() {
@@ -98,8 +105,11 @@ class Frustris {
             return;
         }
 
-        const types = Object.keys(TETROMINOES);
-        const type = types[Math.floor(Math.random() * types.length)];
+        const type = this.nextPieceType;
+        // Pick new next piece
+        this.nextPieceType = this.allTypes[Math.floor(Math.random() * this.allTypes.length)];
+        this.updatePreview();
+
         const data = TETROMINOES[type];
 
         const parts = data.shape.map(pos => {
@@ -147,6 +157,9 @@ class Frustris {
         });
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
+        // Prevent context menu (right click) on the game
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+
         this.restartBtn.addEventListener('click', (e) => {
             e.target.blur();
             location.reload();
@@ -172,7 +185,7 @@ class Frustris {
             this.resumeAfterLevelUp('level-three-splash');
         });
 
-        this.initMobileControls();
+        this.initPointerControls();
     }
 
     startGame() {
@@ -183,34 +196,27 @@ class Frustris {
         this.startGameLoop();
     }
 
-    initMobileControls() {
+    initPointerControls() {
         const touchZone = document.getElementById('touch-zone');
         const mobilePause = document.getElementById('mobile-pause');
 
-        let startX = 0;
-        let startY = 0;
         let lastX = 0;
         let lastY = 0;
         let hasMoved = false;
+        let isDragging = false;
 
-        touchZone.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            startX = lastX = touch.clientX;
-            startY = lastY = touch.clientY;
+        const onStart = (clientX, clientY) => {
+            lastX = clientX;
+            lastY = clientY;
             hasMoved = false;
-        });
+            isDragging = true;
+        };
 
-        touchZone.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (this.isPaused || !this.activePiece) return;
+        const onMove = (clientX, clientY) => {
+            if (this.isPaused || !this.activePiece || !isDragging) return;
 
-            const touch = e.touches[0];
-            const currentX = touch.clientX;
-            const currentY = touch.clientY;
-
-            const dx = currentX - lastX;
-            const dy = currentY - lastY;
+            const dx = clientX - lastX;
+            const dy = clientY - lastY;
 
             const moveSensitivity = 1.0;
             const rotateSensitivity = 0.05;
@@ -227,26 +233,46 @@ class Frustris {
                 hasMoved = true;
             }
 
-            lastX = currentX;
-            lastY = currentY;
-        });
+            lastX = clientX;
+            lastY = clientY;
+        };
 
-        touchZone.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            if (this.isPaused || !this.hasStarted) return;
+        const onEnd = () => {
+            if (this.isPaused || !this.hasStarted || !isDragging) {
+                isDragging = false;
+                return;
+            }
 
             if (!hasMoved) {
                 this.keys['Space'] = true;
                 setTimeout(() => { this.keys['Space'] = false; }, 50);
             }
+            isDragging = false;
+        };
+
+        // Pointer Events (Unified Mouse/Touch)
+        touchZone.addEventListener('pointerdown', (e) => {
+            onStart(e.clientX, e.clientY);
+
+            // Listen on window to catch movement even outside the canvas
+            const moveHandler = (moveEv) => onMove(moveEv.clientX, moveEv.clientY);
+            const upHandler = () => {
+                onEnd();
+                window.removeEventListener('pointermove', moveHandler);
+                window.removeEventListener('pointerup', upHandler);
+                window.removeEventListener('pointercancel', upHandler);
+            };
+
+            window.addEventListener('pointermove', moveHandler);
+            window.addEventListener('pointerup', upHandler);
+            window.addEventListener('pointercancel', upHandler);
         });
+
+        // Prevention for old mobile browsers / scrolling
+        touchZone.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 
         mobilePause.addEventListener('click', (e) => {
             e.target.blur();
-            if (this.hasStarted) this.togglePause();
-        });
-        mobilePause.addEventListener('touchstart', (e) => {
-            e.preventDefault();
             if (this.hasStarted) this.togglePause();
         });
     }
@@ -377,7 +403,8 @@ class Frustris {
         if (this.score > this.highScore) {
             this.highScore = this.score;
             localStorage.setItem('frustris_highscore', this.highScore);
-            if (!this.highScoreBroken && this.score > 0) {
+            // Only shout if we beat a non-zero record from previous sessions
+            if (!this.highScoreBroken && this.sessionInitialHighScore > 0 && this.score > this.sessionInitialHighScore) {
                 this.highScoreBroken = true;
                 this.showSpecialBonus('HIGH SCORE!');
             }
@@ -390,6 +417,23 @@ class Frustris {
         } else if (this.currentLevel === 2 && this.score >= 10000) {
             this.levelUp(3);
         }
+    }
+
+    updatePreview() {
+        if (!this.nextPreviewElement) return;
+        this.nextPreviewElement.innerHTML = '';
+        const data = TETROMINOES[this.nextPieceType];
+
+        data.shape.forEach(pos => {
+            const block = document.createElement('div');
+            block.className = 'preview-block';
+            block.style.backgroundColor = data.color;
+            // Center the small blocks in the 60x30 preview box
+            // multiplier 12 to fit well
+            block.style.left = `${30 + pos[0] * 12}px`;
+            block.style.top = `${15 + pos[1] * 12}px`;
+            this.nextPreviewElement.appendChild(block);
+        });
     }
 
     levelUp(targetLevel) {
