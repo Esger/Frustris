@@ -38,8 +38,6 @@ class Frustris {
         this.addEventListeners();
         this.updateUI();
 
-        // Debug accessibility
-        window.frustris = this;
     }
 
     initPhysics() {
