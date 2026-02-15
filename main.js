@@ -37,8 +37,14 @@ class Frustris {
 
         this.initPhysics();
         this.addEventListeners();
-        this.updateUI();
 
+        // Initialize Next Piece System
+        this.nextPreviewElement = document.getElementById('next-preview');
+        this.allTypes = Object.keys(TETROMINOES);
+        this.nextPieceType = this.allTypes[Math.floor(Math.random() * this.allTypes.length)];
+
+        this.updateUI();
+        this.updatePreview();
     }
 
     initPhysics() {
@@ -99,8 +105,11 @@ class Frustris {
             return;
         }
 
-        const types = Object.keys(TETROMINOES);
-        const type = types[Math.floor(Math.random() * types.length)];
+        const type = this.nextPieceType;
+        // Pick new next piece
+        this.nextPieceType = this.allTypes[Math.floor(Math.random() * this.allTypes.length)];
+        this.updatePreview();
+
         const data = TETROMINOES[type];
 
         const parts = data.shape.map(pos => {
@@ -410,6 +419,23 @@ class Frustris {
         } else if (this.currentLevel === 2 && this.score >= 10000) {
             this.levelUp(3);
         }
+    }
+
+    updatePreview() {
+        if (!this.nextPreviewElement) return;
+        this.nextPreviewElement.innerHTML = '';
+        const data = TETROMINOES[this.nextPieceType];
+
+        data.shape.forEach(pos => {
+            const block = document.createElement('div');
+            block.className = 'preview-block';
+            block.style.backgroundColor = data.color;
+            // Center the small blocks in the 60x30 preview box
+            // multiplier 12 to fit well
+            block.style.left = `${30 + pos[0] * 12}px`;
+            block.style.top = `${15 + pos[1] * 12}px`;
+            this.nextPreviewElement.appendChild(block);
+        });
     }
 
     levelUp(targetLevel) {
