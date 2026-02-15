@@ -27,6 +27,7 @@ class Frustris {
         this.wasMoving = false;
         this.lastActionTime = Date.now();
         this.highScoreBroken = false;
+        this.sessionInitialHighScore = this.highScore;
 
         this.pauseModal = document.getElementById('pause-modal');
         this.resumeBtn = document.getElementById('resume-btn');
@@ -147,6 +148,9 @@ class Frustris {
         });
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
+        // Prevent context menu (right click) on the game
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+
         this.restartBtn.addEventListener('click', (e) => {
             e.target.blur();
             location.reload();
@@ -172,7 +176,7 @@ class Frustris {
             this.resumeAfterLevelUp('level-three-splash');
         });
 
-        this.initMobileControls();
+        this.initPointerControls();
     }
 
     startGame() {
@@ -183,34 +187,27 @@ class Frustris {
         this.startGameLoop();
     }
 
-    initMobileControls() {
+    initPointerControls() {
         const touchZone = document.getElementById('touch-zone');
         const mobilePause = document.getElementById('mobile-pause');
 
-        let startX = 0;
-        let startY = 0;
         let lastX = 0;
         let lastY = 0;
         let hasMoved = false;
+        let isDragging = false;
 
-        touchZone.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            startX = lastX = touch.clientX;
-            startY = lastY = touch.clientY;
+        const onStart = (clientX, clientY) => {
+            lastX = clientX;
+            lastY = clientY;
             hasMoved = false;
-        });
+            isDragging = true;
+        };
 
-        touchZone.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (this.isPaused || !this.activePiece) return;
+        const onMove = (clientX, clientY) => {
+            if (this.isPaused || !this.activePiece || !isDragging) return;
 
-            const touch = e.touches[0];
-            const currentX = touch.clientX;
-            const currentY = touch.clientY;
-
-            const dx = currentX - lastX;
-            const dy = currentY - lastY;
+            const dx = clientX - lastX;
+            const dy = clientY - lastY;
 
             const moveSensitivity = 1.0;
             const rotateSensitivity = 0.05;
@@ -227,26 +224,48 @@ class Frustris {
                 hasMoved = true;
             }
 
-            lastX = currentX;
-            lastY = currentY;
-        });
+            lastX = clientX;
+            lastY = clientY;
+        };
 
-        touchZone.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            if (this.isPaused || !this.hasStarted) return;
+        const onEnd = () => {
+            if (this.isPaused || !this.hasStarted || !isDragging) {
+                isDragging = false;
+                return;
+            }
 
             if (!hasMoved) {
                 this.keys['Space'] = true;
                 setTimeout(() => { this.keys['Space'] = false; }, 50);
             }
+            isDragging = false;
+        };
+
+        // Pointer Events (Unified Mouse/Touch)
+        touchZone.addEventListener('pointerdown', (e) => {
+            touchZone.setPointerCapture(e.pointerId);
+            onStart(e.clientX, e.clientY);
         });
+
+        touchZone.addEventListener('pointermove', (e) => {
+            onMove(e.clientX, e.clientY);
+        });
+
+        touchZone.addEventListener('pointerup', (e) => {
+            touchZone.releasePointerCapture(e.pointerId);
+            onEnd();
+        });
+
+        touchZone.addEventListener('pointercancel', (e) => {
+            touchZone.releasePointerCapture(e.pointerId);
+            isDragging = false;
+        });
+
+        // Prevention for old mobile browsers / scrolling
+        touchZone.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 
         mobilePause.addEventListener('click', (e) => {
             e.target.blur();
-            if (this.hasStarted) this.togglePause();
-        });
-        mobilePause.addEventListener('touchstart', (e) => {
-            e.preventDefault();
             if (this.hasStarted) this.togglePause();
         });
     }
@@ -377,7 +396,8 @@ class Frustris {
         if (this.score > this.highScore) {
             this.highScore = this.score;
             localStorage.setItem('frustris_highscore', this.highScore);
-            if (!this.highScoreBroken && this.score > 0) {
+            // Only shout if we beat a non-zero record from previous sessions
+            if (!this.highScoreBroken && this.sessionInitialHighScore > 0 && this.score > this.sessionInitialHighScore) {
                 this.highScoreBroken = true;
                 this.showSpecialBonus('HIGH SCORE!');
             }
