@@ -8,12 +8,14 @@ class Frustris {
     constructor() {
         this.container = document.getElementById('game-canvas-container');
         this.scoreElement = document.getElementById('score-val');
+        this.highScoreElement = document.getElementById('high-score-val');
         this.pileMeter = document.getElementById('pile-meter');
         this.gameOverScreen = document.getElementById('game-over');
         this.finalScoreElement = document.getElementById('final-score-val');
         this.restartBtn = document.getElementById('restart-btn');
 
         this.score = 0;
+        this.highScore = parseInt(localStorage.getItem('frustris_highscore')) || 0;
         this.currentLevel = 1;
         this.minToClear = 3;
         this.isGameOver = false;
@@ -24,6 +26,7 @@ class Frustris {
         this.isTouchingPile = false;
         this.wasMoving = false;
         this.lastActionTime = Date.now();
+        this.highScoreBroken = false;
 
         this.pauseModal = document.getElementById('pause-modal');
         this.resumeBtn = document.getElementById('resume-btn');
@@ -33,6 +36,7 @@ class Frustris {
 
         this.initPhysics();
         this.addEventListeners();
+        this.updateUI();
 
         // Debug accessibility
         window.frustris = this;
@@ -160,9 +164,14 @@ class Frustris {
             this.startGame();
         });
 
-        document.getElementById('continue-btn').addEventListener('click', (e) => {
+        document.getElementById('continue-btn-2').addEventListener('click', (e) => {
             e.target.blur();
-            this.resumeAfterLevelUp();
+            this.resumeAfterLevelUp('level-two-splash');
+        });
+
+        document.getElementById('continue-btn-3').addEventListener('click', (e) => {
+            e.target.blur();
+            this.resumeAfterLevelUp('level-three-splash');
         });
 
         this.initMobileControls();
@@ -366,24 +375,40 @@ class Frustris {
 
     updateUI() {
         this.scoreElement.innerText = this.score.toString().padStart(6, '0');
+
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            localStorage.setItem('frustris_highscore', this.highScore);
+            if (!this.highScoreBroken && this.score > 0) {
+                this.highScoreBroken = true;
+                this.showSpecialBonus('HIGH SCORE!');
+            }
+        }
+
+        this.highScoreElement.innerText = this.highScore.toString().padStart(6, '0');
+
         if (this.currentLevel === 1 && this.score >= 5000) {
-            this.levelUp();
+            this.levelUp(2);
+        } else if (this.currentLevel === 2 && this.score >= 10000) {
+            this.levelUp(3);
         }
     }
 
-    levelUp() {
-        this.currentLevel = 2;
-        this.minToClear = 4;
+    levelUp(targetLevel) {
+        this.currentLevel = targetLevel;
+        this.minToClear = targetLevel + 2; // Level 1 -> 3, Level 2 -> 4, Level 3 -> 5
         this.isPaused = true;
         this.runner.enabled = false;
-        document.getElementById('level-two-splash').classList.remove('hidden');
+
+        const modalId = targetLevel === 2 ? 'level-two-splash' : 'level-three-splash';
+        document.getElementById(modalId).classList.remove('hidden');
     }
 
-    resumeAfterLevelUp() {
+    resumeAfterLevelUp(modalId) {
         this.isPaused = false;
         this.runner.enabled = true;
-        document.getElementById('level-two-splash').classList.add('hidden');
-        this.lastActionTime = Date.now(); // Reset time to prevent immediate safety spawn
+        document.getElementById(modalId).classList.add('hidden');
+        this.lastActionTime = Date.now();
     }
 
     screenShake(magnitude = 5) {
@@ -401,15 +426,7 @@ class Frustris {
         }, 30);
     }
 
-    showClearBonus() {
-        const shoutouts = [
-            'Yeeha!', 'Dope!', 'Yeah!', 'That\'s right!',
-            'Awesome!', 'Slick!', 'Clean!', 'Wicked!',
-            'Stellar!', 'Bam!', 'Kaboom!', 'Noice!',
-            'Radical!', 'Superb!', 'Unstoppable!'
-        ];
-        const text = shoutouts[Math.floor(Math.random() * shoutouts.length)];
-
+    showSpecialBonus(text) {
         const bonus = document.createElement('div');
         bonus.className = 'clear-bonus';
         bonus.innerText = text;
@@ -427,6 +444,17 @@ class Frustris {
 
         this.container.appendChild(bonus);
         setTimeout(() => bonus.remove(), 1000);
+    }
+
+    showClearBonus() {
+        const shoutouts = [
+            'Yeeha!', 'Dope!', 'Yeah!', 'That\'s right!',
+            'Awesome!', 'Slick!', 'Clean!', 'Wicked!',
+            'Stellar!', 'Bam!', 'Kaboom!', 'Noice!',
+            'Radical!', 'Superb!', 'Unstoppable!'
+        ];
+        const text = shoutouts[Math.floor(Math.random() * shoutouts.length)];
+        this.showSpecialBonus(text);
     }
 
     checkClears() {
@@ -503,8 +531,21 @@ class Frustris {
         if (toRemove.size > 0) {
             this.screenShake(12);
             this.showClearBonus();
-            this.score += toRemove.size * 100;
+
+            // Progressive scoring logic: 100 base + 25% bonus for each piece above minimum
+            const multiplier = 1 + (toRemove.size - this.minToClear) * 0.25;
+            const pointsGained = Math.floor(toRemove.size * 100 * multiplier);
+
+            this.score += pointsGained;
             toRemove.forEach(p => Composite.remove(this.engine.world, p));
+
+            // Check for Perfect Clear
+            const remainingSettled = bodies.filter(b => b.label === 'settled' && !toRemove.has(b));
+            if (remainingSettled.length === 0) {
+                this.score += 1000;
+                this.showSpecialBonus('PERFECT CLEAR!');
+            }
+
             const remaining = Composite.allBodies(this.engine.world);
             remaining.forEach(b => Sleeping.set(b, false));
             this.updateUI();
