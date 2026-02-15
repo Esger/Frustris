@@ -50,33 +50,52 @@
                              class="control-zone gestures"></div>
                     </div>
 
-                    <div class="controls-hint desktop-only">
-                        <p><span>&larr;&rarr;</span> Move</p>
-                        <p><span>A / D</span> Rotate Smoothly</p>
-                        <p><span>&darr;</span> Soft Drop</p>
-                        <p><span>SPACE</span> Hard Drop</p>
-                        <p><span>ESC</span> Pause</p>
-                    </div>
-
                     <div id="start-splash"
                          class="modal">
                         <div class="modal-content">
                             <h1 class="logo large">FRUSTRIS</h1>
                             <p>Tetris, but with physics.</p>
+                            <div class="instructions-list">
+                                <div class="desktop-only">
+                                    <p><span>&larr;&rarr;</span> Move</p>
+                                    <p><span>A/D</span> Smooth Rotate</p>
+                                    <p><span>SPACE</span> Hard Drop</p>
+                                    <p><span>ESC</span> Pause</p>
+                                </div>
+                                <div class="mobile-only-block">
+                                    <p><span>SWIPE</span> Move / Rotate</p>
+                                    <p><span>TAP</span> Hard Drop</p>
+                                </div>
+                            </div>
                             <p class="level-tag">LEVEL 01</p>
                             <button id="play-btn">PLAY</button>
                         </div>
                     </div>
 
                     <div id="level-two-splash"
-                         class="modal hidden no-bg">
-                        <h1 class="level-two-text">LEVEL 02</h1>
+                         class="modal hidden">
+                        <div class="modal-content">
+                            <h2 class="level-two-text">LEVEL 02</h2>
+                            <p>Challenge accepted? Matches now require 4 pieces.</p>
+                            <button id="continue-btn">CONTINUE</button>
+                        </div>
                     </div>
 
                     <div id="pause-modal"
                          class="modal hidden">
                         <div class="modal-content">
                             <h2>PAUSED</h2>
+                            <div class="instructions-list">
+                                <div class="desktop-only">
+                                    <p><span>&larr;&rarr;</span> Move</p>
+                                    <p><span>A/D</span> Smooth Rotate</p>
+                                    <p><span>SPACE</span> Hard Drop</p>
+                                </div>
+                                <div class="mobile-only-block">
+                                    <p><span>SWIPE</span> Move / Rotate</p>
+                                    <p><span>TAP</span> Hard Drop</p>
+                                </div>
+                            </div>
                             <p>Relax, catch your breath.</p>
                             <button id="resume-btn">RESUME</button>
                         </div>

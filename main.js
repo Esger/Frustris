@@ -27,12 +27,6 @@ class Frustris {
 
         this.pauseModal = document.getElementById('pause-modal');
         this.resumeBtn = document.getElementById('resume-btn');
-        this.controlsHint = document.querySelector('.controls-hint');
-
-        // Fade instructions after 10 seconds
-        setTimeout(() => {
-            if (this.controlsHint) this.controlsHint.classList.add('faded');
-        }, 10000);
 
         this.width = 400;
         this.height = 700;
@@ -164,6 +158,11 @@ class Frustris {
         document.getElementById('play-btn').addEventListener('click', (e) => {
             e.target.blur();
             this.startGame();
+        });
+
+        document.getElementById('continue-btn').addEventListener('click', (e) => {
+            e.target.blur();
+            this.resumeAfterLevelUp();
         });
 
         this.initMobileControls();
@@ -375,15 +374,16 @@ class Frustris {
     levelUp() {
         this.currentLevel = 2;
         this.minToClear = 4;
-        this.showLevelTwoSplash();
+        this.isPaused = true;
+        this.runner.enabled = false;
+        document.getElementById('level-two-splash').classList.remove('hidden');
     }
 
-    showLevelTwoSplash() {
-        const splash = document.getElementById('level-two-splash');
-        splash.classList.remove('hidden');
-        setTimeout(() => {
-            splash.classList.add('hidden');
-        }, 1500);
+    resumeAfterLevelUp() {
+        this.isPaused = false;
+        this.runner.enabled = true;
+        document.getElementById('level-two-splash').classList.add('hidden');
+        this.lastActionTime = Date.now(); // Reset time to prevent immediate safety spawn
     }
 
     screenShake(magnitude = 5) {
@@ -402,9 +402,17 @@ class Frustris {
     }
 
     showClearBonus() {
+        const shoutouts = [
+            'Yeeha!', 'Dope!', 'Yeah!', 'That\'s right!',
+            'Awesome!', 'Slick!', 'Clean!', 'Wicked!',
+            'Stellar!', 'Bam!', 'Kaboom!', 'Noice!',
+            'Radical!', 'Superb!', 'Unstoppable!'
+        ];
+        const text = shoutouts[Math.floor(Math.random() * shoutouts.length)];
+
         const bonus = document.createElement('div');
         bonus.className = 'clear-bonus';
-        bonus.innerText = 'FRUSTRIS!';
+        bonus.innerText = text;
         bonus.style.position = 'absolute';
         bonus.style.top = '50%';
         bonus.style.left = '50%';
